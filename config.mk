@@ -1,8 +1,5 @@
-CONFIG_ROOT!=		git rev-parse --show-toplevel
-CONFIG_ROOT:=		${CONFIG_ROOT:C,/$,,}
+CONFIG_ROOT:=		${INSTALL_DIR:C,/$,,}
 CONFIG_ROOT_NAME:=	${CONFIG_ROOT:C,^.*/([^/]+)$,\1,}
-
-RELATIVE_CURDIR=	${.CURDIR:C,^${CONFIG_ROOT}/*,,}
 
 ALL_MACS!=	ifconfig | grep ether | cut -d' ' -f2
 .for mac in ${ALL_MACS}

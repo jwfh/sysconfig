@@ -1,4 +1,5 @@
 VERSION=		0.1.0
-ROOT_DOMAIN?=	jacobhouse.ca
+INSTALL_DIR=	/sysconfig
+ROOT_DOMAIN=	jacobhouse.ca
 
 .include "./config.mk"
