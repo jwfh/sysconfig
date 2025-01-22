@@ -1,0 +1,143 @@
+#!/bin/sh
+
+. config.sh
+
+LOG_FILE="/var/log/sysconfig/sysconfig-$(date '+%s').log"
+NEEDS_REBOOT=0
+OS="$(uname -s)"
+MAC=
+MAC_CONFIG=
+FQDN=
+UNINSTALLED_PACKAGES=
+
+print_script_version() {
+    echo Welcome to sysconfig ${VERSION} on ${OS}!
+    echo
+}
+
+get_macs() {
+    ifconfig | grep ether | cut -d' ' -f2
+}
+
+set_mac_config() {
+    local all_macs="$(get_macs)"
+    for mac in ${all_macs}; do
+        local mac_config="servers/$(echo "${mac}" | sed -e 's,:,-,g').sh"
+        if [ -f "${mac_config}" ]; then
+            MAC="${mac}"
+            MAC_CONFIG="${mac_config}"
+            return 0
+        fi
+    done
+    echo Unable to locate this machine's MAC address in the site-wide configuration repository. Please ensure that the machine's configuration as been committed and try again.
+    echo
+    echo The following MAC addresses were identified on this system: ${all_macs}
+    exit 1
+}
+
+source_server_config() {
+    if [ "${MAC_CONFIG}x" == "x" ] || ! [ -f "${MAC_CONFIG}" ]; then
+        echo "Unable to locate configuration for server. Expected configuration at '${MAC_CONFIG}'."
+        exit 1
+    fi
+    . "${MAC_CONFIG}"
+    for var in HOST SITE ROLES IP; do
+        if [ -z "${!var}" ]; then
+            echo "ERROR: Missing configuration value for variable" "${var}"
+            exit 1
+        fi
+    done
+
+    FQDN="${HOST}.${SITE}.${ROOT_DOMAIN}"
+    echo "Loaded configuration for ${FQDN}"
+    echo "  - MAC Address: ${MAC}"
+    echo "  - IP Address: ${IP}"
+    echo "  - Roles: ${ROLES}"
+    echo
+}
+
+get_hostname() {
+    hostname -f
+}
+
+set_hostname() {
+    if [ $# -ne 1 ]; then
+        echo "${0} requires exactly one argument: hostname-to-set"
+        exit 1
+    fi
+    sysrc hostname="${$1}"
+    NEEDS_REBOOT=1
+}
+
+update_hostname_from_config() {
+    local current_hostname="$(get_hostname)"
+    if [ "${FQDN}" != "${current_hostname}" ]; then
+        echo "Changing hostname from '${current_hostname}' to '${FQDN}'"
+        set_hostname "${FQDN}"
+    fi
+}
+
+get_packages_for_role() {
+    local role="${1}"
+    cat "${role}/requirements.txt" 2>/dev/null || :
+}
+
+get_pkg_version() {
+    local pkgname="${1}"
+    pkg info "${pkgname}" 2>/dev/null | sed -n -e '/^Version *:/ s,^[^:]*: *,, p'
+}
+
+install_packages() {
+    for role in ${ROLES}; do
+        local packages_for_role="$(get_packages_for_role "${role}")"
+        if [ "${packages_for_role}x" != "x" ]; then
+            echo "The following packages are required by '${role}': ${packages_for_role}"
+            PACKAGES="${PACKAGES} ${packages_for_role}"
+            for package in ${packages_for_role}; do
+                package_version="$(get_package_version "${package})"
+                if [ "${package_version}x" == "x" ]; then
+                    UNINSTALLED_PACKAGES="${UNINSTALLED_PACKAGES} ${package}"
+                    echo "  - ${package} not found"
+                else
+                    echo "  - ${package}-${package_version} found"
+                fi
+            done
+            echo
+        fi
+    done
+
+    if [ "${UNINSTALLED_PACKAGES}x" != "x" ]; then
+        echo "The following packages will now be installed: ${UNINSTALLED_PACKAGES}"
+        echo
+        read -p "Do you wish to continue? (y/n) " continuevar
+        if [ "$(echo "${continuevar}" | tr '[A-Z]' '[a-z]')" != "y" ]; then
+            echo "Package installation aborted!"
+            exit 0
+        fi
+
+        pkg install -y "${UNINSTALLED_PACKAGES}"
+    fi
+    echo
+}
+
+reboot_if_needed() {
+    if [ ${NEEDS_REBOOT} -ne 0 ]; then
+        echo "A reboot is required to finish applying system configuration."
+        echo
+        echo "System is going down now. Goodbye."
+        echo
+        reboot 
+    fi
+}
+
+main() {
+    print_script_version
+    set_mac_config
+    source_server_config
+    install_packages 
+    update_hostname_from_config
+
+    reboot_if_needed
+}
+
+main "${@}"

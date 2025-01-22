@@ -1,1 +1,0 @@
-PACKAGES=	bind920
