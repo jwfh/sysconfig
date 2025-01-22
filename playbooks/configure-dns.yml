@@ -1,0 +1,8 @@
+---
+- name: Configure DNS Server (BIND9) - Dev/Prod
+  hosts: dns_servers
+  become: true
+  vars_files:
+    - "inventory/{{ ansible_host }}.yml"
+  roles:
+    - bind9

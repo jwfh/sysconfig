@@ -1,0 +1,8 @@
+# Main inventory file that includes dev and prod environments
+[dev]
+# Include dev environment
+inventory/dev.ini
+
+[prod]
+# Include prod environment
+inventory/prod.ini
